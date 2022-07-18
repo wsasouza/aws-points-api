@@ -1,5 +1,5 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import AWS from "aws-sdk";
+import AWS, { Request } from "aws-sdk";
 import { v4 } from "uuid";
 import * as yup from "yup";
 
@@ -63,13 +63,12 @@ export const addPoints = async (event: APIGatewayProxyEvent): Promise<APIGateway
     await schema.validate(reqBody, { abortEarly: true });
 
     const pointsUserRequest = {
-      ...reqBody,  
+      userID: reqBody.userID,
+      points: +reqBody.points,   
       pointsID: v4()    
-    };
+    };       
 
-    const { userID } = pointsUserRequest;    
-
-    const userAlreadyExists = await fetchUserById(userID);
+    const userAlreadyExists = await fetchUserById(pointsUserRequest.userID);
 
     if (!userAlreadyExists) {
       await docClient
