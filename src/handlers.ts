@@ -1,10 +1,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import AWS from "aws-sdk";
+import { v4 } from "uuid";
 import * as yup from "yup";
 
 interface IPoints {
-  userId: string;
+  userID: string;
   points: number;
+  pointsID?: string;
 }
 
 const docClient = new AWS.DynamoDB.DocumentClient();
@@ -14,62 +16,9 @@ const headers = {
 };
 
 const schema = yup.object().shape({
-  userId: yup.string().required(),
+  userID: yup.string().required(),
   points: yup.number().required(),  
 });
-
-export const addPoints = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    const reqBody = JSON.parse(event.body as string);
-
-    await schema.validate(reqBody, { abortEarly: false });
-
-    const pointsUser: IPoints = {
-      ...reqBody,      
-    };
-
-    const { userId, points } = pointsUser;    
-
-    const userAlreadyExists = await fetchUserById(userId);
-
-    if (!userAlreadyExists) {
-      await docClient
-      .put({
-        TableName: tableName,
-        Item: pointsUser,
-      })
-      .promise();
-
-      return {
-        statusCode: 201,
-        headers,
-        body: JSON.stringify(pointsUser),
-      };
-    }
- 
-  } catch (e) {
-    return handleError(e);
-  }
-};
-
-const fetchUserById = async (id: string) => {
-  const output = await docClient
-    .get({
-      TableName: tableName,
-      Key: {
-        userID: id,
-      },
-    })
-    .promise();
-
-  if (!output.Item) {
-    return false;
-  }
-
-  return output.Item;
-};
-
-
 
 class HttpError extends Error {
   constructor(public statusCode: number, body: Record<string, unknown> = {}) {
@@ -107,6 +56,95 @@ const handleError = (e: unknown) => {
   throw e;
 };
 
+export const addPoints = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const reqBody: IPoints = JSON.parse(event.body as string);
+
+    await schema.validate(reqBody, { abortEarly: true });
+
+    const pointsUserRequest = {
+      ...reqBody,  
+      pointsID: v4()    
+    };
+
+    const { userID } = pointsUserRequest;    
+
+    const userAlreadyExists = await fetchUserById(userID);
+
+    if (!userAlreadyExists) {
+      await docClient
+      .put({
+        TableName: tableName,
+        Item: pointsUserRequest,
+      })
+      .promise();
+
+      return {
+        statusCode: 201,
+        headers,
+        body: JSON.stringify(pointsUserRequest),
+      };
+    }
+
+    const points: number = userAlreadyExists.points + pointsUserRequest.points;
+    const pointsUserAdd = {
+      ...userAlreadyExists,
+      points
+    };
+
+    await docClient
+      .put({
+        TableName: tableName,
+        Item: pointsUserAdd,
+      })
+      .promise();
+
+      return {
+        statusCode: 201,
+        headers,
+        body: JSON.stringify(pointsUserAdd),
+      };
+ 
+  } catch (e) {
+    return handleError(e);
+  }
+};
+
+const fetchUserById = async (id: string) => {
+  const output = await docClient
+    .get({
+      TableName: tableName,
+      Key: {
+        userID: id,
+      },
+    })
+    .promise();
+
+  if (!output.Item) {
+    return false;
+  }
+
+  return output.Item;
+};
+
+export const getPointsUser = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const pointsUser = await fetchUserById(event.pathParameters?.id as string);
+
+    if(!pointsUser) {
+      throw new HttpError(404, { error: "not found" });
+    }
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify(pointsUser),
+    };
+  } catch (e) {
+    return handleError(e);
+  }
+}; 
+
 export const listPoints = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const output = await docClient
     .scan({
@@ -120,4 +158,7 @@ export const listPoints = async (event: APIGatewayProxyEvent): Promise<APIGatewa
     body: JSON.stringify(output.Items),
   };
 };
+
+
+
 
