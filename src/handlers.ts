@@ -13,6 +13,9 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 const tableName = "PointsTable";
 const headers = {
   "content-type": "application/json",
+  "Access-Control-Allow-Headers" : "Content-Type",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "OPTIONS,PUT,GET"
 };
 
 const schema = yup.object().shape({
